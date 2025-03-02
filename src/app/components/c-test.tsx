@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { WordItem, CTestStyle } from "./word-item";
 import { cn } from "../lib/utils";
+import nlp from 'compromise';
+
 
 interface Props {
   paragraphs: string[];
@@ -67,26 +69,62 @@ export const CTest = ({
 
       if (!answer) return;
 
-      inputs.forEach((input) => {
-        const letterIndex = input.dataset.letterIndex ? parseInt(input.dataset.letterIndex) : 0;
-        const correctLetter = word[letterIndex];
-
+      // Handle span style differently
+      if (style === 'span' && inputs.length === 1) {
+        const input = inputs[0];
+        const hiddenPart = word.slice(getShowLetter(word));
+        
         input.readOnly = true;
 
         if (answer.isCorrect) {
-          input.style.backgroundColor = "#d1fae5";
-          input.style.borderColor = "#10b981";
           input.style.color = "#047857";
+          input.style.backgroundColor = "#d1fae5";
         } else {
-          input.style.backgroundColor = "#fee2e2";
-          input.style.borderColor = "#ef4444";
           input.style.color = "#b91c1c";
+          input.style.backgroundColor = "#fee2e2";
           
-          if (input.value !== correctLetter) {
-            input.value = correctLetter;
-          }
+          // Show the correct answer
+          input.value = hiddenPart;
         }
-      });
+      } else {
+        // Original implementation for box and underline styles
+        inputs.forEach((input) => {
+          const letterIndex = input.dataset.letterIndex ? parseInt(input.dataset.letterIndex) : 0;
+          const correctLetter = word[letterIndex];
+
+          input.readOnly = true;
+
+          if (style === 'box') {
+            // Box style feedback
+            if (answer.isCorrect) {
+              input.style.backgroundColor = "#d1fae5";
+              input.style.borderColor = "#10b981";
+              input.style.color = "#047857";
+            } else {
+              input.style.backgroundColor = "#fee2e2";
+              input.style.borderColor = "#ef4444";
+              input.style.color = "#b91c1c";
+              
+              if (input.value !== correctLetter) {
+                input.value = correctLetter;
+              }
+            }
+          } else {
+            // Underline style feedback
+            if (answer.isCorrect) {
+              input.style.color = "#047857";
+              input.style.backgroundColor = "#d1fae5";
+            } else {
+              input.style.color = "#b91c1c";
+              input.style.backgroundColor = "#fee2e2";
+              
+              if (input.value !== correctLetter) {
+                input.value = correctLetter;
+              }
+            }
+          }
+        });
+      }
     });
   };
 
@@ -104,16 +142,33 @@ export const CTest = ({
         field.querySelectorAll("input[data-is-target='true']")
       ) as HTMLInputElement[];
 
-      // Check if all letters in the word are correct
-      const allCorrect = inputs.every((input, index) => {
-        const letterIndex = input.dataset.letterIndex ? parseInt(input.dataset.letterIndex) : 0;
-        return input.value.toLowerCase() === word[letterIndex].toLowerCase();
-      });
-      
-      if (allCorrect) {
-        correctWords++;
+      // Handle span style differently
+      if (style === 'span' && inputs.length === 1) {
+        const input = inputs[0];
+        const hiddenPart = word.slice(getShowLetter(word));
+        const userAnswer = input.value.trim();
+
+        // For span style, we compare the entire hidden part as a whole
+        // rather than individual letters
+        const isCorrect = userAnswer.toLowerCase() === hiddenPart.toLowerCase();
+        
+        if (isCorrect) {
+          correctWords++;
+        }
+        answers.push({ word, isCorrect });
+      } else {
+        // Original implementation for box and underline styles
+        // Check if all letters in the word are correct
+        const allCorrect = inputs.every((input) => {
+          const letterIndex = input.dataset.letterIndex ? parseInt(input.dataset.letterIndex) : 0;
+          return input.value.toLowerCase() === word[letterIndex].toLowerCase();
+        });
+        
+        if (allCorrect) {
+          correctWords++;
+        }
+        answers.push({ word, isCorrect: allCorrect });
       }
-      answers.push({ word, isCorrect: allCorrect });
     });
 
     return {
@@ -178,12 +233,38 @@ export const CTest = ({
 
   // Use compromise library for more accurate sentence splitting if needed
   const splitFirstSentence = (text: string): { firstSentence: string; rest: string } => {
-    const match = text.match(/^[^.!?]+[.!?]\s*/);
-    if (!match) return { firstSentence: text, rest: "" };
-
-    const firstSentence = match[0];
-    const rest = text.slice(firstSentence.length);
-    return { firstSentence, rest };
+    // Create a compromise document from the text
+    const doc = nlp(text);
+    
+    // Extract the first sentence
+    const sentences = doc.sentences().out('array');
+    
+    if (sentences.length === 0) {
+      return { firstSentence: text, rest: "" };
+    }
+    
+    const firstSentence = sentences[0];
+    
+    // Determine the rest of the text by removing the first sentence
+    // We need to be careful about whitespace between sentences
+    const indexOfFirstSentence = text.indexOf(firstSentence);
+    const lengthOfFirstSentence = firstSentence.length;
+    
+    // Find the position right after the first sentence
+    // Look for the sentence-ending punctuation and any following whitespace
+    let endPosition = indexOfFirstSentence + lengthOfFirstSentence;
+    
+    // Adjust for any whitespace after the sentence to ensure proper splitting
+    while (endPosition < text.length && /\s/.test(text[endPosition])) {
+      endPosition++;
+    }
+    
+    const rest = text.slice(endPosition);
+    
+    return { 
+      firstSentence: text.slice(0, endPosition), 
+      rest 
+    };
   };
 
   const { firstSentence, rest: firstParagraphRest } = splitFirstSentence(paragraphs[0]);

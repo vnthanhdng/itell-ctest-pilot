@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { cn } from "../lib/utils"
+import { cn } from "../lib/utils";
 
 export type CTestStyle = "box" | "underline" | "span";
 
@@ -23,6 +23,7 @@ export function WordItem({
   style = "box",
 }: Props) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const singleInputRef = useRef<HTMLInputElement | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
 
   if (!isTarget) {
@@ -30,7 +31,6 @@ export function WordItem({
   }
 
   const letters = word.split("");
-
   const revealedLetters = letters.slice(0, showLetter);
   const hiddenLetters = letters.slice(showLetter);
   
@@ -103,6 +103,46 @@ export function WordItem({
     }
   };
 
+  const moveToNextWord = () => {
+    // Find the next word-item element
+    let parent = singleInputRef.current?.parentElement?.parentElement?.parentElement;
+    if (parent) {
+      while (parent?.nextElementSibling) {
+        const nextSibling = parent.nextElementSibling as HTMLElement;
+        if (nextSibling?.classList.contains("word-item")) {
+          const input = nextSibling.querySelector(
+            "input[data-is-target='true']"
+          ) as HTMLInputElement;
+          if (input) {
+            input.focus();
+            break;
+          }
+        }
+        parent = nextSibling;
+      }
+    }
+  };
+
+  const moveToPrevWord = () => {
+    // Find the previous word-item element
+    let parent = singleInputRef.current?.parentElement?.parentElement?.parentElement;
+    if (parent) {
+      while (parent?.previousElementSibling) {
+        const prevSibling = parent.previousElementSibling as HTMLElement;
+        if (prevSibling?.classList.contains("word-item")) {
+          const input = prevSibling.querySelector(
+            "input[data-is-target='true']"
+          ) as HTMLInputElement;
+          if (input) {
+            input.focus();
+            break;
+          }
+        }
+        parent = prevSibling;
+      }
+    }
+  };
+
   if (isRevealed) {
     return (
       <span className="word-item inline-block whitespace-nowrap py-0.5">
@@ -122,68 +162,124 @@ export function WordItem({
       <fieldset
         data-target-word={word}
         className={cn(
-          "inline-flex items-center px-1 transition-opacity duration-300",
+          "inline-flex items-center transition-opacity duration-300",
+          style !== "box" && "px-0",
+          style === "box" && "px-1",
           className
         )}
       >
-        {revealedLetters.map((letter, index) => (
-          <Letter
-            key={index}
-            letter={letter}
-            className="rounded-none px-1 py-1 first-of-type:rounded-l-md focus-visible:ring-1"
-          />
-        ))}
+        {/* Box style - uses the original implementation with boxes */}
+        {style === "box" && (
+          <>
+            {revealedLetters.map((letter, index) => (
+              <Letter
+                key={index}
+                letter={letter}
+                className="rounded-none px-1 py-1 first-of-type:rounded-l-md focus-visible:ring-1"
+              />
+            ))}
+            
+            {hiddenLetters.map((letter, index) => (
+              <LetterInput
+                className="rounded-none px-1 py-1 last-of-type:rounded-r-lg focus-visible:ring-1"
+                letter={letter}
+                key={index}
+                ref={setInputRef(index)}
+                onNext={() => handleNext(index)}
+                onPrev={() => handlePrev(index)}
+                letterIndex={showLetter + index}
+              />
+            ))}
+          </>
+        )}
 
-        {style === "box" && hiddenLetters.map((letter, index) => (
-          <LetterInput
-            className="rounded-none px-1 py-1 last-of-type:rounded-r-lg focus-visible:ring-1"
-            letter={letter}
-            key={index}
-            ref={setInputRef(index)}
-            onNext={() => handleNext(index)}
-            onPrev={() => handlePrev(index)}
-            letterIndex={showLetter + index}
-          />
-        ))}
-
+        {/* Underline style - shows regular text for visible part, underlines for each missing letter */}
         {style === "underline" && (
-          <div className="flex flex-col">
-            <div className="flex">
-              {hiddenLetters.map((letter, index) => (
-                <LetterInput
-                  className="rounded-none px-1 py-1 last-of-type:rounded-r-lg focus-visible:ring-1 w-6 border-transparent border-b-gray-400"
-                  letter={letter}
-                  key={index}
+          <div className="flex items-center">
+            <span>{revealedLetters.join('')}</span>
+            {hiddenLetters.map((letter, index) => (
+              <span key={index} className="mx-0.5 relative">
+                <input
+                  required
+                  data-is-target={true}
                   ref={setInputRef(index)}
-                  onNext={() => handleNext(index)}
-                  onPrev={() => handlePrev(index)}
-                  letterIndex={showLetter + index}
-                  underlineStyle={true}
-                  underlineCount={1}
+                  data-letter-index={showLetter + index}
+                  type="text"
+                  maxLength={1}
+                  className="bg-transparent border-0 focus:outline-none text-center p-0 w-[1ch] mx-[1px]"
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    if (newValue === "" || newValue.toLowerCase() === letter.toLowerCase()) {
+                      if (newValue !== "") {
+                        handleNext(index);
+                      }
+                    } else {
+                      e.target.value = "";
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      handlePrev(index);
+                    } else if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      handleNext(index);
+                    } else if (e.key === "Backspace") {
+                      e.preventDefault();
+                      const value = e.currentTarget.value;
+                      e.currentTarget.value = "";
+                      if (value === "") {
+                        handlePrev(index);
+                      }
+                    }
+                  }}
                 />
-              ))}
-            </div>
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-800"></div>
+              </span>
+            ))}
           </div>
         )}
 
+        {/* Span style - shows regular text for visible part, a single flexible input field for all missing letters */}
         {style === "span" && (
-          <div className="relative">
-            <div className="flex">
-              {hiddenLetters.map((letter, index) => (
-                <LetterInput
-                  className="rounded-none px-1 py-1 last-of-type:rounded-r-lg focus-visible:ring-1 w-6 border-transparent"
-                  letter={letter}
-                  key={index}
-                  ref={setInputRef(index)}
-                  onNext={() => handleNext(index)}
-                  onPrev={() => handlePrev(index)}
-                  letterIndex={showLetter + index}
-                  underlineStyle={true}
-                  underlineCount={0}
-                />
-              ))}
+          <div className="flex items-center">
+            <span>{revealedLetters.join('')}</span>
+            <div className="relative inline-flex ml-0.5">
+              <input
+                required
+                data-is-target={true}
+                ref={singleInputRef}
+                type="text"
+                maxLength={50} // Allow longer input
+                className="bg-transparent border-0 focus:outline-none p-0 min-w-[1ch] w-auto"
+                style={{ width: `${Math.max(hiddenLetters.length, 1)}ch` }} // Dynamically size based on input
+                data-expected={hiddenLetters.join('')}
+                onChange={(e) => {
+                  e.target.style.width = `${Math.max(e.target.value.length, hiddenLetters.length)}ch`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft" && e.currentTarget.selectionStart === 0) {
+                    e.preventDefault();
+                    moveToPrevWord();
+                  } else if (e.key === "ArrowRight" && 
+                            e.currentTarget.selectionEnd === e.currentTarget.value.length) {
+                    e.preventDefault();
+                    moveToNextWord();
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    moveToNextWord();
+                  } else if (e.key === "Tab") {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      moveToPrevWord();
+                    } else {
+                      moveToNextWord();
+                    }
+                  }
+                }}
+              />
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-800"></div>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-400"></div>
           </div>
         )}
       </fieldset>
@@ -218,8 +314,6 @@ interface LetterInputProps {
   onNext?: () => void;
   onPrev?: () => void;
   letterIndex?: number;
-  underlineStyle?: boolean;
-  underlineCount?: number;
 }
 
 function LetterInput({
@@ -229,8 +323,6 @@ function LetterInput({
   ref,
   className,
   letterIndex,
-  underlineStyle = false,
-  underlineCount = 1,
 }: LetterInputProps) {
   const [, setIsCorrect] = useState<boolean | undefined>(undefined);
   
@@ -271,29 +363,19 @@ function LetterInput({
   };
 
   return (
-    <div className={underlineStyle ? "relative" : ""}>
-      <input
-        required
-        data-is-target={true}
-        ref={ref}
-        data-letter-index={letterIndex}
-        type="text"
-        maxLength={1}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          "size-7 border bg-white text-center text-base focus-visible:border-2 focus-visible:border-blue-500 xl:text-lg",
-          underlineStyle && "border-transparent",
-          className
-        )}
-      />
-      {underlineStyle && underlineCount > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 flex justify-center space-x-0.5">
-          {Array.from({ length: underlineCount }).map((_, i) => (
-            <div key={i} className="h-0.5 w-full bg-gray-400"></div>
-          ))}
-        </div>
+    <input
+      required
+      data-is-target={true}
+      ref={ref}
+      data-letter-index={letterIndex}
+      type="text"
+      maxLength={1}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      className={cn(
+        "size-7 border bg-white text-center text-base focus-visible:border-2 focus-visible:border-blue-500 xl:text-lg",
+        className
       )}
-    </div>
+    />
   );
 }

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { SAMPLE_SUMMARIES } from './lib/utils';
+import { StyleExamples } from './components/style-examples';
 
 export default function HomePage() {
   return (
@@ -20,12 +21,10 @@ export default function HomePage() {
           <p className="mb-4">
             We're testing three different styles:
           </p>
-          <ul className="list-disc pl-5 mb-4">
-            <li><strong>Box style</strong>: Individual boxes for each missing letter</li>
-            <li><strong>Underline style</strong>: Individual underlines for each missing letter</li>
-            <li><strong>Span style</strong>: A single underline for all missing letters in a word</li>
-          </ul>
-          <p className="mb-6">
+          
+          <StyleExamples />
+          
+          <p className="mt-6 mb-6">
             Each test takes approximately 5-10 minutes to complete. Your responses help us understand which format
             is most effective for reading comprehension.
           </p>
