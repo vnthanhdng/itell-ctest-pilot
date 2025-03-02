@@ -23,7 +23,7 @@ This project is built with Next.js and uses the following technologies:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/itell-ctest-pilot.git
+git clone https://github.com/vnthanhdng/itell-ctest-pilot.git
 cd itell-ctest-pilot
 ```
 
