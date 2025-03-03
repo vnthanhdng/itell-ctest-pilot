@@ -208,13 +208,8 @@ export function WordItem({
                   maxLength={1}
                   className="bg-transparent border-0 focus:outline-none text-center p-0 w-[1ch] mx-[1px]"
                   onChange={(e) => {
-                    const newValue = e.target.value;
-                    if (newValue === "" || newValue.toLowerCase() === letter.toLowerCase()) {
-                      if (newValue !== "") {
-                        handleNext(index);
-                      }
-                    } else {
-                      e.target.value = "";
+                    if (e.target.value.length === 1) {
+                      handleNext(index);
                     }
                   }}
                   onKeyDown={(e) => {

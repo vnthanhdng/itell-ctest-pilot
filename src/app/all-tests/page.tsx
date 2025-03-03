@@ -1,41 +1,67 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CTest } from '../components/c-test';
-import { SAMPLE_SUMMARIES } from '../lib/utils';
+import { SAMPLE_SUMMARIES, TextSummary } from '../lib/utils';
 import { CTestStyle } from '../components/word-item';
 import Link from 'next/link';
 
+const assignTestStyles = (participantId: string): { testId: string, style: CTestStyle }[] => {
+  const seed = participantId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  
+  const testIds = SAMPLE_SUMMARIES.map(summary => summary.id);
+  
+  const shuffledIds = [...testIds];
+  for (let i = shuffledIds.length - 1; i > 0; i--) {
+    const hashValue = (seed * 9301 + 49297 * i) % 233280;
+    const j = Math.floor((hashValue / 233280) * (i + 1));
+    [shuffledIds[i], shuffledIds[j]] = [shuffledIds[j], shuffledIds[i]];
+  }
+  
+  // first half gets underline, second half gets span
+  const halfIndex = Math.floor(shuffledIds.length / 2);
+  const assignments = shuffledIds.map((testId, index) => ({
+    testId,
+    style: index < halfIndex ? 'underline' as CTestStyle : 'span' as CTestStyle
+  }));
+  
+  return assignments;
+};
+
 export default function AllTestsPage() {
-  const [currentTestIndex, setCurrentTestIndex] = useState(0);
-  const [style, setStyle] = useState<CTestStyle>('box');
-  const [testResults, setTestResults] = useState<Array<{
+  const [testAssignments, setTestAssignments] = useState<{ testId: string, style: CTestStyle }[]>([]);
+  const [participantId, setParticipantId] = useState('');
+  const [testResults, setTestResults] = useState<Record<string, {
     testId: string;
     style: CTestStyle;
     isSimplified: boolean;
     correctWords: number;
     totalWords: number;
     score: number;
-  }>>([]);
-  const [testCompleted, setTestCompleted] = useState(false);
-  const [participantId, setParticipantId] = useState('');
-
-  // Generate a random participant ID on first load
+  }>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  
   useEffect(() => {
-    const randomId = Math.random().toString(36).substring(2, 10);
-    setParticipantId(randomId);
+    // Check for existing participant ID in local storage
+    const storedId = localStorage.getItem('c-test-participant-id');
+    if (storedId) {
+      setParticipantId(storedId);
+    } else {
+      const randomId = Math.random().toString(36).substring(2, 10);
+      setParticipantId(randomId);
+      localStorage.setItem('c-test-participant-id', randomId);
+    }
   }, []);
-
-  // Select a style based on participant ID to ensure consistent testing
+  
+  // Assign styles once we have a participant ID
   useEffect(() => {
     if (participantId) {
-      // Use the participant ID to deterministically select a style
-      const styleIndex = participantId.charCodeAt(0) % 3;
-      const styles: CTestStyle[] = ['box', 'underline', 'span'];
-      setStyle(styles[styleIndex]);
+      setTestAssignments(assignTestStyles(participantId));
     }
   }, [participantId]);
-
+  
+  // Handle completion of individual tests
   const handleTestComplete = (result: {
     testId: string;
     style: CTestStyle;
@@ -44,22 +70,39 @@ export default function AllTestsPage() {
     totalWords: number;
     score: number;
   }) => {
-    // Add this test result to our array
-    setTestResults(prev => [...prev, result]);
+    // Add this test result to our record
+    setTestResults(prev => ({
+      ...prev,
+      [result.testId]: result
+    }));
     
-    // Move to the next test or complete
-    if (currentTestIndex < SAMPLE_SUMMARIES.length - 1) {
-      setCurrentTestIndex(currentTestIndex + 1);
-    } else {
-      // All tests completed
-      setTestCompleted(true);
+    // If all tests are complete, scroll to top to show submit button
+    const completedTests = Object.keys({...testResults, [result.testId]: result}).length;
+    if (completedTests === SAMPLE_SUMMARIES.length) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       
-      // Submit all results
-      submitAllResults();
+      // Make the submit section visible
+      setTimeout(() => {
+        const submitSection = document.getElementById('submit-section');
+        if (submitSection) {
+          submitSection.classList.remove('opacity-0');
+          submitSection.classList.add('animate-pulse');
+          
+          // Stop pulsing after a few seconds
+          setTimeout(() => {
+            submitSection.classList.remove('animate-pulse');
+          }, 3000);
+        }
+      }, 1000);
     }
   };
-
+  
+  // Submit all results
   const submitAllResults = async () => {
+    if (isSubmitting) return;
+    
+    setIsSubmitting(true);
+    
     try {
       const response = await fetch('/api/submit-all', {
         method: 'POST',
@@ -68,7 +111,8 @@ export default function AllTestsPage() {
         },
         body: JSON.stringify({
           participantId,
-          results: testResults,
+          testStyles: testAssignments,
+          results: Object.values(testResults),
           timestamp: new Date().toISOString()
         }),
       });
@@ -78,12 +122,18 @@ export default function AllTestsPage() {
       }
       
       console.log('All results submitted successfully');
+      setIsSubmitted(true);
+      
     } catch (error) {
       console.error('Error submitting results:', error);
+      alert('There was a problem submitting your results. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  if (testCompleted) {
+  
+  // Show completion page after successful submission
+  if (isSubmitted) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <header className="bg-white shadow-sm">
@@ -104,7 +154,7 @@ export default function AllTestsPage() {
             
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Thank You!</h2>
             <p className="text-gray-600 mb-6">
-              You've completed all the c-tests. Thank you for your participation!
+              You've completed all the c-tests. Your results have been successfully submitted.
             </p>
             
             <div className="space-y-3">
@@ -124,43 +174,144 @@ export default function AllTestsPage() {
       </div>
     );
   }
-
-  const currentTest = SAMPLE_SUMMARIES[currentTestIndex];
   
-  // Split the text into paragraphs
-  const paragraphs = currentTest.text.split(/\n\s*\n/).filter(Boolean);
+  // Calculate overall progress
+  const calculateOverallProgress = () => {
+    if (SAMPLE_SUMMARIES.length === 0) return 0;
+    return (Object.keys(testResults).length / SAMPLE_SUMMARIES.length) * 100;
+  };
+  
+  const overallProgress = calculateOverallProgress();
+  const allTestsCompleted = Object.keys(testResults).length === SAMPLE_SUMMARIES.length;
+  
+  // Find test style by ID
+  const getTestStyle = (testId: string): CTestStyle => {
+    const assignment = testAssignments.find(a => a.testId === testId);
+    return assignment ? assignment.style : 'underline'; // Default to underline if not found
+  };
   
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gray-50 pb-20">
+      <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-xl font-bold text-gray-900">C-Test Pilot Study</h1>
-          <div className="text-sm text-gray-500">
-            Test {currentTestIndex + 1} of {SAMPLE_SUMMARIES.length} • Participant ID: {participantId}
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">C-Test Pilot Study</h1>
+              <div className="text-sm text-gray-500">
+                Participant ID: {participantId}
+              </div>
+            </div>
+            
+            <div className="w-32 flex flex-col">
+              <div className="flex justify-between text-sm mb-1">
+                <span>Progress</span>
+                <span>{Math.round(overallProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-500" 
+                  style={{ width: `${overallProgress}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
       </header>
       
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="mb-4">
-          <div className="flex space-x-2 text-sm">
-            <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-800">
-              Style: {style === 'box' ? 'Box Style' : style === 'underline' ? 'Underline Style' : 'Span Style'}
-            </div>
-            <div className="bg-green-50 px-3 py-1 rounded-full text-green-800">
-              Text: {currentTest.simplified ? 'Simplified' : 'Standard'}
-            </div>
-          </div>
+      <div 
+        id="submit-section"
+        className={`transition-opacity duration-500 ${allTestsCompleted ? '' : 'opacity-0 pointer-events-none'} sticky top-20 z-10 bg-green-50 border-green-200 border rounded-lg max-w-3xl mx-auto mt-4 p-4 flex justify-between items-center shadow-md`}
+      >
+        <div>
+          <h2 className="font-bold text-green-800">All tests completed!</h2>
+          <p className="text-sm text-green-700">You can now submit your results</p>
+        </div>
+        <button
+          onClick={submitAllResults}
+          disabled={isSubmitting}
+          className={`px-4 py-2 rounded-md ${
+            isSubmitting 
+              ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+              : 'bg-green-600 text-white hover:bg-green-700'
+          }`}
+        >
+          {isSubmitting ? 'Submitting...' : 'Submit All Results'}
+        </button>
+      </div>
+      
+      <main className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8 space-y-12">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-blue-800">
+          <h2 className="text-xl font-bold mb-4">C-Test Pilot Study Instructions</h2>
+          <p className="mb-4">
+            This study contains 12 different c-tests that you'll need to complete. Each test presents a text with some words that have missing letters.
+          </p>
+          <p className="mb-2">For each test, you'll see one of two styles:</p>
+          <ul className="list-disc list-inside space-y-1 mb-4">
+            <li><span className="font-medium">Underline Style:</span> Each missing letter has its own blank with an underline</li>
+            <li><span className="font-medium">Span Style:</span> Missing letters are shown as a single blank space with a single underline</li>
+          </ul>
+          <p>
+            For each test, complete all the gaps and click "Check Answers" to see your score, then click "Continue" to record your result.
+          </p>
+          <p className="mt-4 text-sm italic">
+            You can scroll through all the tests and complete them in any order. When you've finished all 12 tests, a submit button will appear at the top of the page.
+          </p>
         </div>
         
-        <CTest
-          key={currentTest.id}
-          paragraphs={paragraphs}
-          testId={currentTest.id}
-          isSimplified={currentTest.simplified}
-          style={style}
-          onComplete={handleTestComplete}
-        />
+        <div className="space-y-16">
+          {SAMPLE_SUMMARIES.map((test, index) => {
+            // Skip if we don't have style assignments yet
+            if (testAssignments.length === 0) return null;
+            
+            // Get style for this test
+            const style = getTestStyle(test.id);
+            
+            // Split the text into paragraphs
+            const paragraphs = test.text.split(/\n\s*\n/).filter(Boolean);
+            const isCompleted = !!testResults[test.id];
+            
+            return (
+              <div 
+                key={test.id} 
+                id={`test-${test.id}`}
+                className={`bg-white rounded-lg shadow-sm border transition-all duration-300 ${
+                  isCompleted ? 'border-green-300' : 'border-gray-200'
+                }`}
+              >
+                <div className="border-b border-gray-100 p-4">
+                  <div className="flex flex-wrap gap-2">
+                    <h2 className="text-lg font-medium text-gray-900">Test {index + 1}: {test.title}</h2>
+                    <div className="ml-auto flex flex-wrap gap-2 text-sm">
+                      <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-800">
+                        Style: {style === 'underline' ? 'Underline' : 'Span'}
+                      </div>
+                      <div className="bg-green-50 px-3 py-1 rounded-full text-green-800">
+                        Text: {test.simplified ? 'Simplified' : 'Standard'}
+                      </div>
+                      {isCompleted && (
+                        <div className="bg-purple-50 px-3 py-1 rounded-full text-purple-800">
+                          Score: {testResults[test.id].score.toFixed(1)}%
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className={isCompleted ? 'opacity-75' : ''}>
+                  <CTest
+                    key={test.id}
+                    paragraphs={paragraphs}
+                    testId={test.id}
+                    isSimplified={test.simplified}
+                    style={style}
+                    showInstructions={false}
+                    onComplete={handleTestComplete}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </main>
     </div>
   );
