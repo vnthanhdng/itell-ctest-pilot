@@ -206,7 +206,7 @@ export function WordItem({
                   data-letter-index={showLetter + index}
                   type="text"
                   maxLength={1}
-                  className="bg-transparent border-0 focus:outline-none text-center p-0 w-[1ch] mx-[1px]"
+                  className="bg-transparent border-0 focus:outline-none text-center p-0 w-[1.5ch] mx-[1px]"
                   onChange={(e) => {
                     if (e.target.value.length === 1) {
                       handleNext(index);
