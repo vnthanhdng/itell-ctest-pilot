@@ -7,22 +7,13 @@ import { CTestStyle } from '../components/word-item';
 import Link from 'next/link';
 
 const assignTestStyles = (participantId: string): { testId: string, style: CTestStyle }[] => {
-  const seed = participantId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  
+  // Get test IDs from sample summaries
   const testIds = SAMPLE_SUMMARIES.map(summary => summary.id);
   
-  const shuffledIds = [...testIds];
-  for (let i = shuffledIds.length - 1; i > 0; i--) {
-    const hashValue = (seed * 9301 + 49297 * i) % 233280;
-    const j = Math.floor((hashValue / 233280) * (i + 1));
-    [shuffledIds[i], shuffledIds[j]] = [shuffledIds[j], shuffledIds[i]];
-  }
-  
-  // first half gets underline, second half gets span
-  const halfIndex = Math.floor(shuffledIds.length / 2);
-  const assignments = shuffledIds.map((testId, index) => ({
+  // Alternate between underline and span styles
+  const assignments = testIds.map((testId, index) => ({
     testId,
-    style: index < halfIndex ? 'underline' as CTestStyle : 'span' as CTestStyle
+    style: index % 2 === 0 ? 'underline' as CTestStyle : 'span' as CTestStyle
   }));
   
   return assignments;
